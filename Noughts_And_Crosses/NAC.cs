@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Noughts_And_Crosses
@@ -17,8 +18,16 @@ namespace Noughts_And_Crosses
         public int nodeWidth;
         public int nodeHeight;
         public OpenTK.Graphics.TextPrinter textPrinter = new OpenTK.Graphics.TextPrinter(OpenTK.Graphics.TextQuality.High);
-        public Font font = new Font("Inconsolata", 120);
-
+        public Font boxFont = new Font("8bit", 120);
+        public Font titleFont = new Font("8bit", 40);
+        private Random random = new Random();
+        private Player WINNER = Player.AI;
+        private const int WIN_SCREEN_TICK_MAX = (60) * 2;
+        private int WIN_SCREEN_TICK_CURRENT = WIN_SCREEN_TICK_MAX;
+        private int AI_WINS = 0;
+        private int HU_WINS = 0;
+        private Screen ScreenState = Screen.GAME;
+        private Node[] FlashNodes;
 
         //Mouse
         public bool isMouseDown = false;
@@ -62,13 +71,30 @@ namespace Noughts_And_Crosses
 
         enum Screen
         {
-            GAME, WIN_LOS
+            GAME, FLASH
         }
-
-        
 
         protected override void OnUpdateFrame(FrameEventArgs e)
         {
+            if (ScreenState == Screen.FLASH)
+            {
+                foreach (Node n in FlashNodes)
+                {
+                    n.Enabed = !n.Enabed;
+                }
+                WIN_SCREEN_TICK_CURRENT--;
+                if (WIN_SCREEN_TICK_CURRENT == 0)
+                {
+                    ScreenState = Screen.GAME;
+                    foreach (Node n in FlashNodes)
+                    {
+                        n.Enabed = true;
+                    }
+                    ResetBoard();
+                    WIN_SCREEN_TICK_CURRENT = WIN_SCREEN_TICK_MAX;
+                }
+                return;
+            }
             int X = Mouse.X;
             int Y = Mouse.Y;
             Node node = null;
@@ -89,8 +115,196 @@ namespace Noughts_And_Crosses
                     safeSwitch = true;
                     node.taken = true;
                     node.team = Player.Human;
+                    bool cleared = CheckBoard();
+                    if (!cleared)
+                        AI_Calculate_Turn();
                 }
             }
+        }
+
+        void AI_Calculate_Turn()
+        {
+            Node[,] map = nodeMap;
+            List<Node> WinNodes = new List<Node>();
+            List<Node> MyNodes = new List<Node>();
+            List<Node> SaveNodes = new List<Node>();
+            List<Node> FreeNodes = new List<Node>();
+
+            Node[,] nodeMap_DIAG = GenerateDiag();
+            int DIAG_WIDTH = nodeWidth + 2;
+
+            for (int x = 0; x < DIAG_WIDTH; x++)
+            {
+                int lineNodeCount_Enemy = 0;
+                int lineNodeCount_AI = 0;
+                List<Node> TakenNodes = new List<Node>();
+                List<Node> __FreeNodes = new List<Node>();
+                for (int y = 0; y < nodeHeight; y++)
+                {
+                    Node node = nodeMap_DIAG[x, y];
+                    if (node.taken)
+                    {
+                        if (node.team == Player.Human) { lineNodeCount_Enemy++; } else { lineNodeCount_AI++; MyNodes.Add(node); }
+                        TakenNodes.Add(node);
+                    }
+                    else __FreeNodes.Add(node);
+                }
+                if (lineNodeCount_AI + lineNodeCount_Enemy > 0)
+                {
+                    if (lineNodeCount_Enemy == nodeWidth-1 && lineNodeCount_AI == 0) SaveNodes.Add(__FreeNodes[0]);
+                    if (lineNodeCount_AI == nodeWidth-1 && lineNodeCount_Enemy == 0) WinNodes.Add(__FreeNodes[0]);
+                    if (lineNodeCount_AI == 1 && lineNodeCount_Enemy == 1) { /*STALL*/ }
+                }
+                FreeNodes.AddRange(__FreeNodes);
+            }
+
+
+            for (int y = 0; y < nodeHeight; y++)
+            {
+                int lineNodeCount_Enemy = 0;
+                int lineNodeCount_AI = 0;
+                List<Node> TakenNodes = new List<Node>();
+                List<Node> __FreeNodes = new List<Node>();
+                for (int x = 0; x < nodeWidth; x++)
+                {
+                    Node node = map[x, y];
+                    if (node.taken)
+                    {
+                        if (node.team == Player.Human) { lineNodeCount_Enemy++; } else { lineNodeCount_AI++; MyNodes.Add(node); }
+                        TakenNodes.Add(node);
+                    }
+                    else __FreeNodes.Add(node);
+                }
+                if (lineNodeCount_AI + lineNodeCount_Enemy > 0)
+                {
+                    if (lineNodeCount_Enemy == nodeHeight-1 && lineNodeCount_AI == 0) SaveNodes.Add(__FreeNodes[0]);
+                    if (lineNodeCount_AI == nodeHeight-1 && lineNodeCount_Enemy == 0) WinNodes.Add(__FreeNodes[0]);
+                    if (lineNodeCount_AI == 1 && lineNodeCount_Enemy == 1) { /*STALL*/ }
+                }
+                FreeNodes.AddRange(__FreeNodes);
+            }
+
+
+            if (WinNodes.Count > 0)
+            {
+                WinNodes[0].Take(Player.AI);
+            }
+            else
+            if (SaveNodes.Count > 0)
+            {
+                SaveNodes[0].Take(Player.AI);
+            }
+            else if (FreeNodes.Count > 0)
+            {
+                FreeNodes[random.Next(0, FreeNodes.Count)].Take(Player.AI);
+            }
+
+            CheckBoard();
+        }
+
+        bool CheckBoard()
+        {
+            int Total_Count = 0;
+            //X
+            for (int y = 0; y < nodeHeight; y++) {
+                int N_AI = 0;
+                int N_PL = 0;
+                List<Node> nodes = new List<Node>();
+                for (int x = 0; x < nodeWidth; x++)
+                {
+                    Node node = nodeMap[x, y];
+                    if (node.taken)
+                    {
+                        if (node.team == Player.AI) N_AI++; else N_PL++;
+                        Total_Count++;
+                        nodes.Add(node);
+                    }
+                }
+                if (N_PL == nodeWidth)
+                {
+                    HU_WINS++;
+                    Flash(nodes.ToArray());
+                    return true;
+                    //ResetBoard();
+                }
+                else if (N_AI == nodeWidth)
+                {
+                    AI_WINS++;
+                    Flash(nodes.ToArray());
+                    return true;
+                    //ResetBoard();
+                }
+            }
+
+            Node[,] nodemap_DIAG = GenerateDiag();
+
+            int DIAG_WIDTH = nodeWidth + 2;
+
+            //Y
+            for (int x = 0; x < DIAG_WIDTH; x++)
+            {
+                int N_AI = 0;
+                int N_PL = 0;
+                List<Node> nodes = new List<Node>();
+                for (int y = 0; y < nodeHeight; y++)
+                {
+                    Node node = nodemap_DIAG[x, y];
+                    if (node.taken)
+                    {
+                        if (node.team == Player.AI) N_AI++; else N_PL++;
+                        nodes.Add(node);
+                    }
+                }
+                if (N_PL == nodeHeight)
+                {
+                    HU_WINS++;
+                    Flash(nodes.ToArray());
+                    return true;
+                    //ResetBoard();
+                }
+                else if (N_AI == nodeHeight)
+                {
+                    AI_WINS++;
+                    Flash(nodes.ToArray());
+                    return true;
+                    //ResetBoard();
+                }
+            }
+
+            if (Total_Count == nodeWidth * nodeHeight)
+            {
+                ResetBoard();
+                return true;
+            }
+            return false;
+        }
+
+        void Flash(Node[] nodes)
+        {
+            FlashNodes = nodes;
+            ScreenState = Screen.FLASH;
+        }
+
+        Node[,] GenerateDiag()
+        {
+            Node[,] nodemap_DIAG = new Node[nodeWidth + 2, nodeHeight];
+            foreach (Node node in nodeMap) nodemap_DIAG[node.X, node.Y] = node;
+            for (int x = 0, y = 0; x < nodeWidth && y < nodeHeight; x++, y++)
+            {
+                nodemap_DIAG[nodeWidth, y] = nodeMap[x, y];
+            }
+            for (int x = nodeWidth - 1, y = 0; x > -1 && y < nodeHeight; x--, y++)
+            {
+                nodemap_DIAG[nodeWidth + 1, y] = nodeMap[x, y];
+            }
+            return nodemap_DIAG;
+        }
+
+        void ResetBoard()
+        {
+            nodeMap = new Node[nodeWidth, nodeHeight];
+            for (int x = 0; x < nodeWidth; x++)
+                for (int y = 0; y < nodeHeight; y++) nodeMap[x, y] = new Node(x, y);
         }
 
         protected override void OnRenderFrame(FrameEventArgs e)
@@ -99,10 +313,6 @@ namespace Noughts_And_Crosses
             GL.ClearColor(Color.Black);
             GL.LoadIdentity();
             
-            Random random = new Random();
-
-            
-
             for (int x = 0; x < nodeWidth; x++)
             {
                 for (int y = 0; y < nodeHeight; y++)
@@ -111,19 +321,22 @@ namespace Noughts_And_Crosses
                     int h = Height / nodeHeight;
                     Node node = nodeMap[x, y];
                     Color[] colors = node.getColors();
-                    if (node.taken)
+                    if (node.Enabed)
                     {
-                        DrawSquare(x * w, y * h, (x * w) + w, (y * h) + h, colors[1], colors[0], colors[1], colors[0]);
-                        textPrinter.Begin();
-                        OpenTK.Graphics.TextExtents ex = textPrinter.Measure(" ", font);
-                        GL.Translate((x * w) + ((w / 2) - (ex.BoundingBox.Width / 2)), ((y * h) + ((h / 2) - (ex.BoundingBox.Height / 2))), 0);
-                        textPrinter.Print(node.team == Player.Human ? "X" : "O", font, Color.Black);
-                        textPrinter.End();
-                        GL.LoadIdentity();
+                        if (node.taken)
+                        {
+                            DrawSquare(x * w, y * h, (x * w) + w, (y * h) + h, colors[1], colors[0], colors[1], colors[0]);
+                            textPrinter.Begin();
+                            OpenTK.Graphics.TextExtents ex = textPrinter.Measure(" ", boxFont);
+                            GL.Translate((x * w) + ((w / 2) - (ex.BoundingBox.Width / 2)), ((y * h) + ((h / 2) - (ex.BoundingBox.Height / 2))), 0);
+                            textPrinter.Print(node.team == Player.Human ? "X" : "O", boxFont, Color.Black);
+                            textPrinter.End();
+                            GL.LoadIdentity();
+                        }
+                        else
+                        if (node.hovered)
+                            DrawSquare(x * w, y * h, (x * w) + w, (y * h) + h, Color.White, Color.WhiteSmoke, Color.White, Color.WhiteSmoke);
                     }
-                    else
-                    if (node.hovered)
-                        DrawSquare(x * w, y * h, (x * w) + w, (y * h) + h, Color.White, Color.WhiteSmoke, Color.White, Color.WhiteSmoke);
                 }
             }
 
@@ -143,6 +356,12 @@ namespace Noughts_And_Crosses
                 GL.Vertex2(Orth(Width, (Height / nodeHeight) * y));
                 GL.End();
             }
+
+            textPrinter.Begin();
+            GL.Translate(2, 2, 0);
+            textPrinter.Print($"Human: {HU_WINS}     AI: {AI_WINS}", titleFont, Color.Gray);
+
+            textPrinter.End();
 
             SwapBuffers();
         }
@@ -190,6 +409,7 @@ namespace Noughts_And_Crosses
         public bool hovered = false;
         public bool taken = false;
         public Player team;
+        public bool Enabed = true;
 
         public Color[] getColors() => team == Player.Human ? 
             new Color[] { Color.FromArgb(0, 0, 255), Color.FromArgb(70, 70, 255) } : 
@@ -199,6 +419,13 @@ namespace Noughts_And_Crosses
         {
             X = x;
             Y = y;
+        }
+
+        public void Take(Player player)
+        {
+            taken = true;
+            hovered = false;
+            team = player;
         }
     }
 
