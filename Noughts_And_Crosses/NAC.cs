@@ -18,7 +18,7 @@ namespace Noughts_And_Crosses
         public int nodeWidth;
         public int nodeHeight;
         public OpenTK.Graphics.TextPrinter textPrinter = new OpenTK.Graphics.TextPrinter(OpenTK.Graphics.TextQuality.High);
-        public Font boxFont = new Font("8bit", 120);
+        public Font boxFont = new Font("Terminal", 120);
         public Font titleFont = new Font("8bit", 40);
         private Random random = new Random();
         private Player WINNER = Player.AI;
@@ -327,8 +327,8 @@ namespace Noughts_And_Crosses
                         {
                             DrawSquare(x * w, y * h, (x * w) + w, (y * h) + h, colors[1], colors[0], colors[1], colors[0]);
                             textPrinter.Begin();
-                            OpenTK.Graphics.TextExtents ex = textPrinter.Measure(" ", boxFont);
-                            GL.Translate((x * w) + ((w / 2) - (ex.BoundingBox.Width / 2)), ((y * h) + ((h / 2) - (ex.BoundingBox.Height / 2))), 0);
+                            OpenTK.Graphics.TextExtents ex = textPrinter.Measure("X", boxFont);
+                            GL.Translate(((x * w)) + ((w / 2) - (ex.BoundingBox.Width / 2)), ((y * h) + ((h / 2) - (ex.BoundingBox.Height / 2))), 0);
                             textPrinter.Print(node.team == Player.Human ? "X" : "O", boxFont, Color.Black);
                             textPrinter.End();
                             GL.LoadIdentity();
